@@ -97,6 +97,14 @@ class Stik:
         Q4
     ]
 
+    figureQuadrants = [
+        QC,
+        Q1,
+        Q2,
+        Q3,
+        Q4
+    ]
+
 
     # number of ms until a hold is triggered
     HOLD_TIME = 100
@@ -108,12 +116,10 @@ class Stik:
 
     # QC -> Q1 -> Q2 ->Q3 -> Q4 -> Q1 -> QC longest valid figure
     # possible future expansion: do a full loop, then a valid pattern to get the shifted version of the valid pattern
-    # since the final QC gets added after the checks that use this occur, the min at check is 1 less than the full figure
-    MAX_FIGURE_LENGTH = 6
+    MAX_FIGURE_LENGTH = 7
 
     # QC -> QX -> QY -> QC where QX/QY cannot be QC is the shortest figure length
-    # since the final QC gets added after the checks that use this occur, the min at check is 1 less than the full figure
-    MIN_FIGURE_LENGTH = 3
+    MIN_FIGURE_LENGTH = 4
 
     # store configuration
     stikAddress = None
@@ -165,6 +171,47 @@ class Stik:
         # throws an exception if quadrantsObserved is empty, should we handle that here?
         return self.quadrantsObserved[-1]
 
+    def legalFigure(self):
+
+        def isIncrementing(stateA, stateB):
+            if (stateA.quadrant - stateB.quadrant) < 1:
+                return True
+
+        incrementing = None
+        quadrantsObserved = self.quadrantsObserved
+
+        # check figure length
+        if (( figureLength < self.MIN_FIGURE_LENGTH ) and ( figureLength > self.MAX_FIGURE_LENGTH )):
+            return False
+
+        # check completion case, last quadrant should be QC
+        if not quadrantsObserved[len(quadrantsObserved) -1] == QC:
+            return False
+
+        # check base case, 0 ->1 should be QC -> QX
+        if not quadrantsObserved[0] == QC:
+            return False
+
+        # ensure we didn't allow the same quadrant twice
+        # this combined with the checks above for QC at the start and end ensure the start and end transitions are QC -> QX, QY -> QC
+        for n in range(len(quadrantsObserved) - 1):
+            if quadrantsObserved[n] == quadrantsObserved[n+1]:
+                return False
+
+        # determine incrementing or decrementing by looking at first non-starting transition, aka 1 -> 2
+        incrementing = isIncrementing(quadrantsObserved[1], quadrantsObserved[2])
+
+        # for ordering, once we being incrementing quadrants or decrementing quadrants we must continue incrementing or decrementing until QC is seen
+        # check ordering for 2 -> 3, etc, up to before the last. We checked the last was QC above.
+        orderQuadrants = quadrantsObserved[1:-1]
+        for i, j in zip(orderQuadrants, orderQuadrants[1:]):
+            if incrementing == isIncrementing(i, j):
+                continue
+            else:
+                return False
+
+        return True
+
 
     # pass in current Analog Stick and Button information from parse functions
     # takes a QuadrantState and a ButtonState object
@@ -182,7 +229,7 @@ class Stik:
 
         #initial state, nothing observed yet.
         # *should* only ever add QC, as ending and starting occurs at QC
-        if len(quadrantsObserved) == 0:
+        if figureLength == 0:
             self.quadrantsObserved.append(quadrantState)
             return
 
@@ -205,61 +252,36 @@ class Stik:
             #TODO, pass this information along in a reasonable format
             return
 
-        # new state, QX -> QY observed. need to confirm it is a valid transition
-        # valid quadrants for figures are QC through Q4
-        # QC can transition to any quadrant besides itself
-        # all other quadrants can only transition to the adjacent ones
-        if previousQuadrant == QC and quadrantState.quadrant != QC and figureLength < self.MAX_FIGURE_LENGTH:
-            # then really anything is valid, so lets add it
-            self.quadrantsObserved.append(quadrantState)
-            return
-
-        if quadrantState.quadrant != QC and figureLength < self.MAX_FIGURE_LENGTH:
-            return
-
 
         # figure end condition:
         # we are in QC
         # we have seen at least QC -> QX -> QY -> QC where QX/QY cannot be QC
-
-        #TODO: 
-        # we have to check figure "legality" here *OR* at time of add
+        # we have to check figure "legality" here
         #  - min/max length
         #  - ordering
         # if we check at time of add, can we end up with nonsense movements adding up into a valid figure?
         # We would like to enforce that anything after an invalid movement is invalid, and ignore the figure when it tries to "complete" so I think enforcement should be done
         # here instead of add
-        if previousQuadrant != QC and quadrantState.quadrant == QC and ( figureLength >= self.MIN_FIGURE_LENGTH ):
+        # for ordering, once we being incrementing quadrants or decrementing quadrants we must continue incrementing or decrementing until QC is seen
+        if previousQuadrant != QC and quadrantState.quadrant == QC:
             self.quadrantsObserved.append(quadrantState)
-            print("FIGURE OBSERVED: {}".format(self.quadrantsObserved))
+            if self.legalFigure():
+                print("FIGURE OBSERVED: {}".format(self.quadrantsObserved))
+                #TODO, pass this information along in a reasonable format
+            else:
+                print("IGNORING ILLEGAL FIGURE OBSERVED: {}".format(self.quadrantsObserved))
+
             self.resetQuadrantObserved()
             return
 
-
-
-
-
-
-            ##TODO: we might end up simplifying to this, but lets be explicit for now... IGNORE BELOW FOR NOW
-
-        if quadrantState == QC:
-            # then we have completed a figure, flick, or hold
-
-            if not quadrantObserved:
-                # then we never left the center, so nothing to do
-                return None
-
-            if len(quadrantsObserved) == 1:
-                # then we either observed a flick or a hold, need to determine which
-                # TODO
-                return None
-
-            if len(quadrantsObsered) > 1:
-                # then we have a full figure, must confirm it is a valid pattern
-
-        else:
-            # we are either in the middle of a pattern, or a hold
-
+        # new state, QX -> QY observed. need to confirm it is a valid transition
+        # valid quadrants for figures are QC through Q4
+        # QC can transition to any quadrant besides itself
+        # all other quadrants can only transition to the adjacent ones
+        if quadrantState.quadrant != QC:
+            # add and check legality later, the user made the input so don't just ignore it here
+            self.quadrantsObserved.append(quadrantState)
+            return
 
         return
 

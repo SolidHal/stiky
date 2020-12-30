@@ -1,11 +1,10 @@
-
-
 setting up a joycon test:
 
 kernel driver:
 First, install dkms-hid-nintendo:
 
-Update: hid-nintendo is present on Linux's Kernel starting from 5.10! If your kernel is 5.10 or above, skip this step.
+hid-nintendo is present on Linux's Kernel starting from 5.10
+If your kernel is 5.10 or above, skip this step.
 
 git clone https://github.com/nicman23/dkms-hid-nintendo
 cd dkms-hid-nintendo
@@ -25,7 +24,7 @@ sudo systemctl enable --now joycond
 
 
 
-udev rules:
+udev rules, likely not needed:
 /etc/udev/rules.d/50-nintendo-switch.rules
 ```
 # Switch Joy-con (L) (Bluetooth only)
@@ -48,8 +47,11 @@ now to get the info in python. First need to id the combined device:
 1) pair by holding the battery level buttons
 2) press L+R to create combined device
 
-python3 ./.local/lib/python3.8/site-packages/evdev/evtest.py
+# for raw data:
+python3 ./.local/lib/python3.8/site-packages/evdev/evtest.py 
 
+# for basic analog stick handling
+./joycon-test.py
 
 
 

@@ -3,37 +3,12 @@
 from evdev import list_devices, InputDevice, categorize, ecodes
 from math import sqrt, atan2, degrees
 
-CENTER_TOLERANCE = 10000
+CENTER_TOLERANCE = 7500
 STICK_MAX = 32767
 
 print(list_devices())
 
 dev = InputDevice( list_devices()[0] )
-axis = {
-    ecodes.ABS_X: 'ls_x', # 0 - 65,536   the middle is 32768
-    ecodes.ABS_Y: 'ls_y',
-    ecodes.ABS_Z: 'rs_x',
-    ecodes.ABS_RZ: 'rs_y',
-    ecodes.ABS_BRAKE: 'lt', # 0 - 1023
-    ecodes.ABS_GAS: 'rt',
-
-    ecodes.ABS_HAT0X: 'dpad_x', # -1 - 1
-    ecodes.ABS_HAT0Y: 'dpad_y'
-}
-
-center = {
-    'ls_x': STICK_MAX/2,
-    'ls_y': STICK_MAX/2,
-    'rs_x': STICK_MAX/2,
-    'rs_y': STICK_MAX/2
-}
-
-last = {
-    'ls_x': STICK_MAX/2,
-    'ls_y': STICK_MAX/2,
-    'rs_x': STICK_MAX/2,
-    'rs_y': STICK_MAX/2
-}
 
 # Left hand
 # code 0 = horizontal = ecodes.ABS_X
@@ -89,43 +64,47 @@ class Sticks:
 
         if hand == "left":
             left = sqrt(pow(left_X, 2) + pow(left_Y, 2))
-            left_angle = degrees(atan2(left_X, left_Y)) + 180.0
+            print("hand: {} X: {} Y:{}".format(hand, left_X, left_Y))
 
-            #right
-            if left_X > abs(left_Y):
-                print("hand: {} direction: right ".format(hand))
-            #left
-            elif abs(left_X) > left_Y:
+            #handle when we are at 0,0
+            if (left_X == 0) and (left_Y == 0):
+                print("hand: {} direction: centered ".format(hand))
+                return
+
+            # 0 is vertical, goes counter clockwise from there
+            left_angle = degrees(atan2(left_X, left_Y)) + 180.0
+            # print("hand: {} angle: {}".format(hand, right_angle))
+            if (left_angle > 315 and left_angle <= 360) or ( left_angle >=0 and left_angle <= 45):
+                print("hand: {} direction: up ".format(hand))
+            if left_angle <= 135 and left_angle > 45:
                 print("hand: {} direction: left ".format(hand))
-            #up
-            elif abs(left_Y) > left_X:
-                print("hand: {} direction: up ".format(hand))
-            #down
-            elif left_Y > abs(left_X):
-                print("hand: {} direction: up ".format(hand))
+            if left_angle > 135 and left_angle <= 225:
+                print("hand: {} direction: down ".format(hand))
+            if left_angle > 225 and left_angle <=315:
+                print("hand: {} direction: right ".format(hand))
 
         elif hand == "right":
             right = sqrt(pow(right_X, 2) + pow(right_Y, 2))
+            print("hand: {} X: {} Y:{}".format(hand, right_X, right_Y))
+
+            #handle when we are at 0,0
+            if (right_X == 0) and (right_Y == 0):
+                print("hand: {} direction: centered ".format(hand))
+                return
+
+            # 0 is vertical, goes counter clockwise from there
             right_angle = degrees(atan2(right_X, right_Y)) + 180.0
-
-            # 0 is vertical
-
-            print("hand: {} angle: {}".format(hand, right_angle))
-            #TODO: correct these ranges to account to 0 being the top
-            # make deadzone events set the axis value to 0 to clean up behavior
-
-            # if (right_angle > 315 and right_angle <= 360) or ( right_angle >=0 and right_angle <= 45):
-            #     print("hand: {} direction: right ".format(hand))
-            # if right_angle <= 135 and right_angle > 45:
-            #     print("hand: {} direction: up ".format(hand))
-            # if right_angle > 135 and right_angle <= 225:
-            #     print("hand: {} direction: left ".format(hand))
-
-            # if right_angle > 225 and right_angle <=315:
-            #     print("hand: {} direction: down ".format(hand))
+            # print("hand: {} angle: {}".format(hand, right_angle))
+            if (right_angle > 315 and right_angle <= 360) or ( right_angle >=0 and right_angle <= 45):
+                print("hand: {} direction: up ".format(hand))
+            if right_angle <= 135 and right_angle > 45:
+                print("hand: {} direction: left ".format(hand))
+            if right_angle > 135 and right_angle <= 225:
+                print("hand: {} direction: down ".format(hand))
+            if right_angle > 225 and right_angle <=315:
+                print("hand: {} direction: right ".format(hand))
 
             return
-
 
 
 def main():
@@ -165,34 +144,11 @@ def main():
 
         #read stick axis movement
         elif event.type == ecodes.EV_ABS:
-            #TODO: move this to the processing portion, so we can set the X/Y values
-            # to 0 when we are in the deadzone
             if not inDeadZone(event.value):
                 joycons.syn_events.append(event)
-
-
-        # if axis[ event.code ] in [ 'ls_x', 'ls_y', 'rs_x', 'rs_y' ]:
-        #     last[ axis[ event.code ] ] = event.value
-
-        #     value = event.value - center[ axis[ event.code ] ]
-
-        #     if abs( value ) <= CENTER_TOLERANCE:
-        #         value = 0
-
-        #     if axis[ event.code ] == 'rs_x':
-        #         if value < 0:
-        #             print('left')
-        #         else:
-        #             print('right')
-        #         print( value )
-
-        #     elif axis[ event.code ] == 'ls_y':
-        #         if value < 0:
-        #             print('foreward')
-        #         else:
-        #             print('backward')
-        #         print( value )
-
+            else:
+                event.value = 0
+                joycons.syn_events.append(event)
 
 if __name__ == "__main__":
     main()

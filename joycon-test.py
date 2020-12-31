@@ -6,9 +6,6 @@ from math import sqrt, atan2, degrees
 CENTER_TOLERANCE = 7500
 STICK_MAX = 32767
 
-print(list_devices())
-
-dev = InputDevice( list_devices()[0] )
 
 # Left hand
 # code 0 = horizontal = ecodes.ABS_X

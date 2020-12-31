@@ -1,7 +1,8 @@
 #!/usr/bin/python3
 
 from datetime import datetime
-
+import asyncio
+import joycon
 
 hand1map = {
 
@@ -73,11 +74,26 @@ hand2map = {
     #   When a button release is observed, but no button hold is observed this is considered a press
 
 
+class QuadrantState:
+    quadrant = None
+    timestamp = None
+    hand = None
+    def __init__(self, hand, quadrant, timestamp = datetime.now()):
+        self.hand = hand
+        self.quadrant = quadrant
+        self.timestamp = timestamp
+
+class ButtonState:
+    button = None
+    timestamp = None
+    hand = None
+    def __init__(self, hand, button, timestamp = datetime.now()):
+        self.hand = hand
+        self.button = button
+        self.timestamp = timestamp
+
 
 class Stik:
-
-
-
     # QC = "Center Quadrant"
     # Q1 = "Top Quadrant"
     # Q2 = "Right Quadrant"
@@ -89,12 +105,35 @@ class Stik:
     Q2 = 2
     Q3 = 3
     Q4 = 4
-    quadrants = [
+
+    OC = 0
+    O1 = 0.5
+    O2 = 1
+    O3 = 1.5
+    O4 = 2
+    O5 = 2.5
+    O6 = 3
+    O7 = 3.5
+    O8 = 4
+
+    Quadrants = [
         QC,
         Q1,
         Q2,
         Q3,
         Q4
+    ]
+
+    Octants = [
+        OC,
+        O1,
+        O2,
+        O3,
+        O4,
+        O5,
+        O6,
+        O7,
+        O8
     ]
 
     figureQuadrants = [
@@ -122,7 +161,7 @@ class Stik:
     MIN_FIGURE_LENGTH = 4
 
     # store configuration
-    stikAddress = None
+    stikHardware = None
     stikMap = None
 
     # track the quadrants and buttons observed
@@ -130,25 +169,11 @@ class Stik:
     quadrantsObserved = []
     buttonsObserved = []
 
-    def __init__(self, stikAddress, stikMap, hold_time = 100, flick_time = 1):
-        self.stikAddress = stikAddress
+    def __init__(self, stikHardware, stikMap, hold_time = 100, flick_time = 1):
+        self.stikHardware = stikHardware
         self.stikMap = stikAddress
         self.HOLD_TIME = hold_time
         self.FLICK_TIME = flick_time
-
-    class QuadrantState:
-        quadrant = None
-        timestamp = None
-        def __init__(self, quadrant, timestamp):
-            self.quadrant = quadrant
-            self.timestamp = timestamp
-
-    class ButtonState:
-        button = None
-        timestamp = None
-        def __init__(self, button, timestamp):
-            self.button = button
-            self.timestamp = timestamp
 
 
     # pass in some degree motion from the analog stick
@@ -283,17 +308,39 @@ class Stik:
             self.quadrantsObserved.append(quadrantState)
             return
 
+        #TODO: update button state for stik
+
         return
 
 
 # pass in the stik states, and generate keypresses
-def doubleStik(hand1, hand2):
-    return
+class DoubleStik():
 
 
-def sendKeypress():
-    #TODO: pick method to send keypress events to the OS
-    return
+    left = None
+    right = None
+
+    left_state = None
+    right_state = None
+
+    def __init__(self, left_stik, right_stik):
+        self.left = left_stik
+        self.right = right_stik
+
+    def updateState(analogState, buttonState):
+        if analogState.hand == "hand_left":
+            self.left.updateState(analogState, buttonState)
+        elif analogState.hand == "hand_right":
+            self.right.updateStaet(analogStaet, buttonState)
+
+        #TODO: take the states from both hands and combine them, then create a keypress when in a valid state
+        # not every update state will generate a keypress
+        return
+
+
+    def sendKeypress():
+        #TODO: pick method to send keypress events to the OS
+        return
 
     # poll the stiks and manage state
 def main():

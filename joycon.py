@@ -11,40 +11,42 @@ hand_right = "right"
 ecodes_left = {ecodes.ABS_X : "X", ecodes.ABS_Y: "Y", ecodes.BTN_THUMBL : "THUMB"}
 ecodes_right = {ecodes.ABS_RX : "X" ,ecodes.ABS_RY : "Y", ecodes.BTN_THUMBR : "THUMB"}
 
-centered = "CENTERED"
-left = "LEFT"
-right = "RIGHT"
-up = "UP"
-down = "DOWN"
 
-cardinal_directions = [
-    centered,
-    left,
-    right,
-    up,
-    down
-]
 
-up_left = "UP_LEFT"
-up_right = "UP_RIGHT"
-down_left = "DOWN_LEFT"
-down_right = "DOWN_RIGHT"
+CENTER_TOLERANCE = 7500
 
-angled_directions = [
-    up_left,
-    up_right,
-    down_left,
-    down_right
-]
+class Joycon:
 
-class joycon:
 
-    X = 0
-    Y = 0
-    axis_map = {"X" : X, "Y": Y}
+    centered = "CENTERED"
+    left = "LEFT"
+    right = "RIGHT"
+    up = "UP"
+    down = "DOWN"
 
-    thumb = 0
-    button_map = {"THUMB" : thumb}
+    quadrant_directions = [
+        centered,
+        left,
+        right,
+        up,
+        down
+    ]
+
+    up_left = "UP_LEFT"
+    up_right = "UP_RIGHT"
+    down_left = "DOWN_LEFT"
+    down_right = "DOWN_RIGHT"
+
+    octant_directions = [
+        up_left,
+        up_right,
+        down_left,
+        down_right
+    ]
+
+    axis_map = {"X" : 0, "Y": 0}
+
+    button_map = {"THUMB" : 0}
 
     syn_events = []
     hand = None
@@ -63,16 +65,12 @@ class joycon:
     # Microsecond portion of the timestamp.
     button_timestamp_usec = None
 
-    center_tolerance = 7500
 
     four_direction = None
     eight_direction = None
 
-    def _printif(self, debug, string):
-        if debug:
-            print("{} : {}".format(self.hand, string))
 
-    def __init__(self, hand, center_tolerance = self.center_tolerance):
+    def __init__(self, hand, center_tolerance = CENTER_TOLERANCE):
         self.hand = hand
         if hand == hand_left:
             self.hand_ecodes = ecodes_left
@@ -81,6 +79,11 @@ class joycon:
         else:
             raise KeyError
         self.center_tolerance = center_tolerance
+
+
+    def _printif(self, debug, string):
+        if debug:
+            print("{} : {}".format(self.hand, string))
 
     def _inDeadZone(self, value):
         value = abs(value)
@@ -122,13 +125,15 @@ class joycon:
 
         return direction
 
-    def _getAxisFromCode(self, code):
+    def _setAxisFromCode(self, code, value):
         axis_label = self.hand_ecodes.get(code)
-        return self.axis_map.get(axis_label)
+        self.axis_map[axis_label] = value
 
-    def _getButtonFromCode(self, code):
+    def _setButtonFromCode(self, code, value):
         button_label = self.hand_ecodes.get(code)
-        return self.button_map.get(button_label)
+        self.button_map[button_label] = value
+
+
 
     def updateStick(self, event):
         code = event.code
@@ -139,16 +144,17 @@ class joycon:
         if self._inDeadZone(value):
             value = 0
 
-        axis = self._getAxisFromCode(code)
-        axis = value
-        stick_timestamp_sec = event.sec
-        stick_timestamp_usec = event.usec
+        self._setAxisFromCode(code, value)
+        self.stick_timestamp_sec = event.sec
+        self.stick_timestamp_usec = event.usec
 
     def decodeStick(self, debug = False):
-        X = self.X
-        Y = self.Y
+        X = self.axis_map.get("X")
+        Y = self.axis_map.get("Y")
 
-        self.hyp = sqrt(pow(left_X, 2) + pow(left_Y, 2))
+        self._printif(debug, "X : {}, Y : {}".format(X, Y))
+
+        self.hyp = sqrt(pow(X, 2) + pow(Y, 2))
 
         if self.hyp == 0:
             self.angle = None
@@ -163,7 +169,7 @@ class joycon:
 
 
         self._printif(debug, "X: {} Y:{} HYP: {} ANGLE: {}".format(X, Y, self.hyp, self.angle))
-        self._printif(debug, "four_direction: {} eight_direction".format(four_direction, eight_direction))
+        self._printif(debug, "four_direction: {} eight_direction {}".format(self.four_direction, self.eight_direction))
 
     def updateButtons(self, event):
         code = event.code
@@ -171,13 +177,12 @@ class joycon:
         if code not in self.hand_ecodes.keys():
             raise KeyError
 
-        button = self._getButtonFromCode(code)
-        button = value
+        button = self._setButtonFromCode(code, value)
         button_timestamp_sec = event.sec
         button_timestamp_usec = event.usec
 
     def decodeButtons(self, debug = False):
-        thumb = self.thumb
+        thumb = self.button_map.get("THUMB")
         if thumb:
             direction = PRESSED
         else:
@@ -185,7 +190,25 @@ class joycon:
 
         self._printif(debug, "thumb status: ".format(direction))
 
+    def handleEvent(self, event, debug = True):
+        if event.code in self.hand_ecodes.keys():
+            if event.type == ecodes.EV_ABS:
+                self.updateStick(event)
+                self.decodeStick(debug)
+            elif event.type == ecodes.EV_ABS:
+                self.updateButtons(event)
+                self.decodeButtons(debug)
 
+        return
+
+    def getStickQuad(self):
+        return self.four_direction
+
+    def getStickOct(self):
+        return self.eight_direction
+
+    def getButton(self):
+        return self.button_map.get("THUMB")
 
 
 class Joycons:
@@ -196,36 +219,45 @@ class Joycons:
         self.left = left_joycon
         self.right = right_joycon
 
-    def handleEvent(self, event):
+    def handleEvent(self, event, debug = True):
         hand = None
         if event.code in self.left.hand_ecodes.keys():
             hand = self.left
 
-        elif event.code in self.left.hand_ecodes.keys():
+        elif event.code in self.right.hand_ecodes.keys():
             hand = self.right
 
         if hand != None:
-            if event.type == ecodes.EV_ABS:
-                hand.updateStick(event)
-                hand.decodeStick(debug = True)
-            elif event.type == ecodes.EV_ABS:
-                hand.updateButtons(event)
-                hand.decodeButtons(debug = True)
+            hand.handleEvent(event, debug)
 
-        return
+        return hand
 
+    def getSticksQuad(self):
+        return {"left" : left.getStickQuad(), "right" : right.gitStickQuad()}
 
+    def getSticksOct(self):
+        return {"left" : left.getStickOct(), "right" : right.gitStickOct()}
 
-
-
-
+    def getButtons(self):
+        return {"left" : left.getButton(), "right" : right.gitButton()}
 
 
 
 
+async def main():
 
+    print(list_devices())
 
+    dev = InputDevice( list_devices()[0] )
 
+    left = Joycon("left")
+    right = Joycon("right")
+
+    sticks = Joycons(left, right)
+    async for event in dev.async_read_loop():
+        sticks.handleEvent(event)
+
+    return
 
 
 

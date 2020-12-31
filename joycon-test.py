@@ -108,6 +108,10 @@ def main():
 
     joycons = Sticks()
 
+    print(list_devices())
+    dev = InputDevice( list_devices()[0] )
+    print(list_devices()[0])
+
     for event in dev.read_loop():
 
         # combine all events between syn events
@@ -131,7 +135,7 @@ def main():
                 # combine all events between syn events
                 print("------- SYN -------")
                 for e in joycons.syn_events:
-                    # print("code = {}, value = {}".format(e.code, e.value))
+                    print("code = {}, value = {}".format(e.code, e.value))
                     joycons.updateStick(e.code, e.value)
                     # print("{}, {}, {}, {}".format(left_X, left_Y, right_X, right_Y))
                 joycons.decodeStick("left")

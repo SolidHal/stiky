@@ -11,6 +11,31 @@ hand_right = "right"
 ecodes_left = {ecodes.ABS_X : "X", ecodes.ABS_Y: "Y", ecodes.BTN_THUMBL : "THUMB"}
 ecodes_right = {ecodes.ABS_RX : "X" ,ecodes.ABS_RY : "Y", ecodes.BTN_THUMBR : "THUMB"}
 
+centered = "CENTERED"
+left = "LEFT"
+right = "RIGHT"
+up = "UP"
+down = "DOWN"
+
+quadrant_directions = [
+    centered,
+    left,
+    right,
+    up,
+    down
+]
+
+up_left = "UP_LEFT"
+up_right = "UP_RIGHT"
+down_left = "DOWN_LEFT"
+down_right = "DOWN_RIGHT"
+
+octant_directions = [
+    up_left,
+    up_right,
+    down_left,
+    down_right
+]
 
 
 CENTER_TOLERANCE = 7500
@@ -18,31 +43,6 @@ CENTER_TOLERANCE = 7500
 class Joycon:
 
 
-    centered = "CENTERED"
-    left = "LEFT"
-    right = "RIGHT"
-    up = "UP"
-    down = "DOWN"
-
-    quadrant_directions = [
-        centered,
-        left,
-        right,
-        up,
-        down
-    ]
-
-    up_left = "UP_LEFT"
-    up_right = "UP_RIGHT"
-    down_left = "DOWN_LEFT"
-    down_right = "DOWN_RIGHT"
-
-    octant_directions = [
-        up_left,
-        up_right,
-        down_left,
-        down_right
-    ]
 
     axis_map = {"X" : 0, "Y": 0}
 
@@ -190,7 +190,7 @@ class Joycon:
 
         self._printif(debug, "thumb status: ".format(direction))
 
-    def handleEvent(self, event, debug = True):
+    def handleEvent(self, event, debug = False):
         if event.code in self.hand_ecodes.keys():
             if event.type == ecodes.EV_ABS:
                 self.updateStick(event)
@@ -219,8 +219,14 @@ class Joycons:
         self.left = left_joycon
         self.right = right_joycon
 
-    def handleEvent(self, event, debug = True):
+
+    # returns hand that handled the event, None if not a valid event
+    def handleEvent(self, event, debug = False):
         hand = None
+
+        if event.type != ecodes.EV_KEY and event.type != ecodes.EV_ABS:
+            return None
+
         if event.code in self.left.hand_ecodes.keys():
             hand = self.left
 

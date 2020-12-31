@@ -60,7 +60,7 @@ def main():
 
     stik = DoubleStik(leftStik, rightStik)
 
-    for event in dev.read_loop():
+    async for event in dev.asyncio_read_loop():
         # determine hand for event
         # handle event
         joycon_hand = joycons.handleEvent(event, debug = False)
@@ -71,7 +71,7 @@ def main():
         buttonState = toButtonState(joycon_hand.hand, joycon_hand.getButton() )
 
         # send QuadrantState to stiky, which sends keypresses when it is ready
-        stik.updateState(quadState, buttonState)
+        await stik.updateState(quadState, buttonState)
 
 
 

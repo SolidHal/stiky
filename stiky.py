@@ -78,10 +78,14 @@ class QuadrantState:
     quadrant = None
     timestamp = None
     hand = None
-    def __init__(self, hand, quadrant, timestamp = datetime.now()):
+    def __init__(self, hand, quadrant, timestamp = None):
         self.hand = hand
         self.quadrant = quadrant
-        self.timestamp = timestamp
+        if timestamp == None:
+                 self.timestamp = datetime.now()
+        else:
+                 self.timestamp = timestamp
+
 
     def __str__(self):
         return "hand: {}, quadrant: {}".format(self.hand, self.quadrant)
@@ -93,10 +97,13 @@ class ButtonState:
     button = None
     timestamp = None
     hand = None
-    def __init__(self, hand, button, timestamp = datetime.now()):
+    def __init__(self, hand, button, timestamp = None):
         self.hand = hand
         self.button = button
-        self.timestamp = timestamp
+        if timestamp == None:
+                 self.timestamp = datetime.now()
+        else:
+                 self.timestamp = timestamp
 
 
 QC = 0
@@ -153,11 +160,11 @@ class Stik:
 
 
     # number of ms until a hold is triggered
-    HOLD_TIME = 100
+    HOLD_TIME = 300
     HOLD_TIME_DELTA = timedelta(milliseconds=HOLD_TIME)
 
     # a flick is detected when the quadrant is entered for less than FLICK_TIME ms
-    FLICK_TIME = 1
+    FLICK_TIME = 80
     FLICK_TIME_DELTA = timedelta(milliseconds=FLICK_TIME)
 
     # QC -> Q1 -> Q2 ->Q3 -> Q4 -> Q1 -> QC longest valid figure
@@ -175,6 +182,9 @@ class Stik:
     # store a list of QuadrantEvents
     quadrantsObserved = []
     buttonsObserved = []
+
+    # stores the quadrant held until a release event
+    current_hold = None
 
     def __init__(self, stikHardware, stikMap, hold_time = 100, flick_time = 1):
         self.stikHardware = stikHardware
@@ -248,7 +258,7 @@ class Stik:
 
     # pass in current Analog Stick and Button information from parse functions
     # takes a QuadrantState and a ButtonState object
-    def updateState(self, quadrantState, buttonState):
+    async def updateState(self, quadrantState, buttonState):
     # need to turn quadrantsObsereved and buttonsObseved from each hand into valid movements
 
         #Need to be able to differentiate short and long entries, and only care about changes in quadrant or long holds in non-QC
@@ -267,6 +277,9 @@ class Stik:
         previousQuadrant = self.previousQuadrantState().quadrant
         previousTimestamp = self.previousQuadrantState().timestamp
 
+
+        print("figure length = {}, previousQuadrant = {}, previousTimestamp = {},  currentQuadrant = {}, currentTimestamp = {} ".format(figureLength, previousQuadrant, previousTimestamp, quadrantState.quadrant, quadrantState.timestamp))
+
         #idle state, only QC observed, no change in state, existing in QC has no "hold"
         #must update observed states with most recent so we have accurate flick timestamp comparisons
         if ( previousQuadrant == QC) and ( figureLength == 1 ) and quadrantState.quadrant == QC:
@@ -274,16 +287,28 @@ class Stik:
             self.quadrantsObserved.append(quadrantState)
             return
 
-        # hold state, only QC -> QX observed, longer than Y ms observed between this observation and original observation
-        if previousQuadrant == quadrantState.quadrant and (figureLength == 1) and (( datetime.now() - previousTimestamp) > self.HOLD_TIME_DELTA ):
-            print("HOLD TO {} OBSERVED".format(quadrantState.quadrant))
+        # detect a hold release. All other movements on this Stik are invalid until the hold is released.
+        if quadrantState.quadrant == QC and previousQuadrant != None and self.current_hold != None:
+            print("HOLD TO {} RELEASED".format(self.current_hold))
+            self.current_hold = None
+            self.resetQuadrantsObserved()
             #TODO, pass this information along in a reasonable format
             return
 
+        # hold state, only QC -> QX observed, longer than Y ms observed between this observation and original observation
+        delta_ms = datetime.now() - previousTimestamp
+        if previousQuadrant == quadrantState.quadrant and (figureLength == 2) and (delta_ms > self.HOLD_TIME_DELTA ) and quadrantState.quadrant != self.current_hold:
+            print("HOLD TO {} OBSERVED".format(quadrantState.quadrant))
+            self.current_hold = quadrantState.quadrant
+            #TODO, pass this information along in a reasonable format
+            return
+
+
         # flick state, only QC -> QX -> QC observed, and for < FLICK_TIME_DELTA
-        if previousQuadrant != QC and quadrantState.quadrant == QC and ( figureLength == 2 ) and ((datetime.now() - previousTimestamp) < self.FLICK_TIME_DELTA) :
+        if previousQuadrant != QC and quadrantState.quadrant == QC and ( figureLength == 2 ) and (delta_ms < self.FLICK_TIME_DELTA) :
             print("FLICK TO {} OBSERVED".format(quadrantState.quadrant))
             #TODO, pass this information along in a reasonable format
+            self.resetQuadrantsObserved()
             return
 
 

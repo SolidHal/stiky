@@ -230,44 +230,75 @@ class Stik:
             return None
         return self.buttonsObserved[-1]
 
-    def legalFigure(self):
 
+    def _printif(self, debug, string):
+        if debug:
+            print("{} : {}".format(self.hand, string))
+
+    def legalFigure(self, debug = False):
+
+        # need both incrementing and decrementing checks to avoid 4,1,4 and 1,4,1 issues
         def isIncrementing(stateA, stateB):
-            if (stateA.quadrant - stateB.quadrant) < 1:
+            # handle the special wrap around case
+            if (stateA.quadrant == Q4 and stateB.quadrant == Q1):
                 return True
+            elif (stateA.quadrant - stateB.quadrant) == -1:
+                return True
+            return False
+
+        def isDecrementing(stateA, stateB):
+            # handle the special wrap around case
+            if (stateA.quadrant == Q1 and stateB.quadrant == Q4):
+                return True
+            elif (stateA.quadrant - stateB.quadrant) == 1:
+                return True
+            return False
+
 
         incrementing = None
+        decrementing = None
         quadrantsObserved = self.quadrantsObserved
         figureLength = len(quadrantsObserved)
 
         # check figure length
         if (( figureLength < self.MIN_FIGURE_LENGTH ) and ( figureLength > self.MAX_FIGURE_LENGTH )):
+            self._printif(debug, "ERROR: FIGURE TOO LONG")
             return False
 
         # check completion case, last quadrant should be QC
-        if not quadrantsObserved[len(quadrantsObserved) -1] == QC:
+        if not quadrantsObserved[-1].quadrant == QC:
+            self._printif(debug, "ERROR: FIGURE DOESN'T COMPLETE WITH QC; ends with {}".format(quadrantsObserved[-1].quadrant))
             return False
 
         # check base case, 0 ->1 should be QC -> QX
-        if not quadrantsObserved[0] == QC:
+        if not quadrantsObserved[0].quadrant == QC:
+            self._printif(debug, "ERROR: FIGURE DOESN'T HAVE PROPER BASE CASE")
             return False
 
         # ensure we didn't allow the same quadrant twice
         # this combined with the checks above for QC at the start and end ensure the start and end transitions are QC -> QX, QY -> QC
         for n in range(len(quadrantsObserved) - 1):
-            if quadrantsObserved[n] == quadrantsObserved[n+1]:
+            if quadrantsObserved[n].quadrant == quadrantsObserved[n+1].quadrant:
+                self._printif(debug, "ERROR: FIGURE HAS DUPLICATE QUADRANTS")
                 return False
 
         # determine incrementing or decrementing by looking at first non-starting transition, aka 1 -> 2
         incrementing = isIncrementing(quadrantsObserved[1], quadrantsObserved[2])
+        decrementing = isDecrementing(quadrantsObserved[1], quadrantsObserved[2])
+        if incrementing:
+                self._printif(debug, "FIGURE IS INCREMENTING")
+        elif decrementing:
+                self._printif(debug, "FIGURE IS DECREMENTING")
+
 
         # for ordering, once we being incrementing quadrants or decrementing quadrants we must continue incrementing or decrementing until QC is seen
         # check ordering for 2 -> 3, etc, up to before the last. We checked the last was QC above.
         orderQuadrants = quadrantsObserved[1:-1]
         for i, j in zip(orderQuadrants, orderQuadrants[1:]):
-            if incrementing == isIncrementing(i, j):
+            if (incrementing and incrementing == isIncrementing(i, j)) or (decrementing and decrementing == isDecrementing(i,j)):
                 continue
             else:
+                self._printif(debug, "ERROR: FIGURE IS INCREMENTING AND DECREMENTING; First offending pair: {} to {} ".format(i.quadrant, j.quadrant))
                 return False
 
         return True
@@ -362,7 +393,7 @@ class Stik:
         # for ordering, once we being incrementing quadrants or decrementing quadrants we must continue incrementing or decrementing until QC is seen
         if previousQuadrant != QC and quadrantState.quadrant == QC:
             self.quadrantsObserved.append(quadrantState)
-            if self.legalFigure():
+            if self.legalFigure(debug=True):
                 print("FIGURE OBSERVED: {}".format(self.quadrantsObserved))
                 #TODO, pass this information along in a reasonable format
             else:

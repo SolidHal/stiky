@@ -1,5 +1,7 @@
 #!/usr/bin/python3
 
+from datetime import datetime, timedelta
+import time
 import asyncio
 import joycon
 import stiky
@@ -60,31 +62,18 @@ def main():
 
     stik = DoubleStik(leftStik, rightStik)
 
-    async for event in dev.asyncio_read_loop():
+    for event in dev.read_loop():
         # determine hand for event
-        # handle event
         joycon_hand = joycons.handleEvent(event, debug = False)
         if joycon_hand == None:
             continue
         # create QuadrantState and ButtonState from event
         quadState = toQuadrantState(joycon_hand.hand, joycon_hand.getStickQuad() )
         buttonState = toButtonState(joycon_hand.hand, joycon_hand.getButton() )
-
         # send QuadrantState to stiky, which sends keypresses when it is ready
-        await stik.updateState(quadState, buttonState)
-
-
+        stik.updateState(quadState, buttonState)
 
     return
-
-
-
-
-
-
-
-
-
 
 if __name__ == "__main__":
     main()

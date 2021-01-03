@@ -40,6 +40,10 @@ octant_directions = [
 
 CENTER_TOLERANCE = 7500
 
+PRESSED = 1
+
+RELEASED = 0
+
 class Joycon:
 
 
@@ -195,7 +199,7 @@ class Joycon:
             if event.type == ecodes.EV_ABS:
                 self.updateStick(event)
                 self.decodeStick(debug)
-            elif event.type == ecodes.EV_ABS:
+            elif event.type == ecodes.EV_KEY:
                 self.updateButtons(event)
                 self.decodeButtons(debug)
 

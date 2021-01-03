@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 import time
 import asyncio
 import joycon
-from threading import Timer
+from asyncioTimer import Timer
 
 hand1map = {
 
@@ -81,10 +81,9 @@ class QuadrantState:
     timestamp = None
     hand = None
     keepAlive = None
-    def __init__(self, hand, quadrant, timestamp = None, keepAlive = False):
+    def __init__(self, hand, quadrant, timestamp = None):
         self.hand = hand
         self.quadrant = quadrant
-        self.keepAlive = keepAlive
         if timestamp == None:
                  self.timestamp = time.time()
         else:
@@ -102,10 +101,9 @@ class ButtonState:
     timestamp = None
     hand = None
     keepAlive = None
-    def __init__(self, hand, button, timestamp = None, keepAlive = False):
+    def __init__(self, hand, button, timestamp = None):
         self.hand = hand
         self.button = button
-        self.keepAlive = keepAlive
         if timestamp == None:
                  self.timestamp = time.time()
         else:
@@ -156,6 +154,26 @@ figureQuadrants = [
     Q4
 ]
 
+#BUTTON STATE DICT KEYS
+# QUADRANT INPUT BLOCKING:
+block = "block"
+# BUTTONS:
+buttons = "buttons"
+THUMB = "thumb"
+# BUTTON STATES:
+RELEASED = "released"
+PRESSED = "pressed"
+HELD = "held"
+
+
+#QUADRANT STATE DICT KEYS
+FIGURE = "figure"
+# for continaing holds/flicks
+FLICK_HOLD = "flick_hold"
+# then uses the BUTTON STATES above but, FLICKED == PRESSED
+
+
+
 class Stik:
     # QC = "Center Quadrant"
     # Q1 = "Top Quadrant"
@@ -164,9 +182,6 @@ class Stik:
     # Q4 = "Left Quadrant"
     # statics
 
-
-    PRINTED = False
-
     # number of ms until a hold is triggered
     HOLD_TIME = None
     HOLD_TIME_DELTA = None
@@ -174,6 +189,9 @@ class Stik:
     # a flick is detected when the quadrant is entered for less than FLICK_TIME ms
     FLICK_TIME = None
     FLICK_TIME_DELTA = None
+
+    BUTTON_PRESS_TIME = None
+    BUTTON_PRESS_TIME_DELTA = None
 
     # QC -> Q1 -> Q2 ->Q3 -> Q4 -> Q1 -> QC longest valid figure
     # possible future expansion: do a full loop, then a valid pattern to get the shifted version of the valid pattern
@@ -189,19 +207,24 @@ class Stik:
     # track the quadrants and buttons observed
     # store a list of QuadrantEvents
     quadrantsObserved = []
-    buttonsObserved = []
+    buttonObserved = None
 
     # stores the quadrant held until a release event
     current_hold = None
     quadrant_hold_thread = None
+    # same for the button
+    button_hold_thread = None
+    button_held = None
 
-    def __init__(self, hand, stikMap, hold_time = 400, flick_time = 200):
+    def __init__(self, hand, stikMap, hold_time = 400, flick_time = 200, button_time = 200):
         self.hand = hand
         self.stikMap = stikMap
         self.HOLD_TIME = hold_time
         self.HOLD_TIME_DELTA = self.HOLD_TIME/1000.0
         self.FLICK_TIME = flick_time
         self.FLICK_TIME_DELTA = self.FLICK_TIME/1000.0
+        self.BUTTON_PRESS_TIME = button_time
+        self.BUTTON_PRESS_TIME_DELTA = self.BUTTON_PRESS_TIME/1000.0
 
 
     # pass in some degree motion from the analog stick
@@ -230,6 +253,11 @@ class Stik:
             return None
         return self.buttonsObserved[-1]
 
+    def _quadStateListToQuadList(self, quadStateList):
+        quadList = []
+        for state in quadStateList:
+            quadList.append(state.quadrant)
+        return quadList
 
     def _printif(self, debug, string):
         if debug:
@@ -261,7 +289,7 @@ class Stik:
         figureLength = len(quadrantsObserved)
 
         # check figure length
-        if (( figureLength < self.MIN_FIGURE_LENGTH ) and ( figureLength > self.MAX_FIGURE_LENGTH )):
+        if (( figureLength < self.MIN_FIGURE_LENGTH ) or ( figureLength > self.MAX_FIGURE_LENGTH )):
             self._printif(debug, "ERROR: FIGURE TOO LONG")
             return False
 
@@ -303,15 +331,14 @@ class Stik:
 
         return True
 
-    def _holdQuadrant(self, quadrantState):
-        print("HOLD TO {} OBSERVED".format(quadrantState.quadrant))
+    async def _holdQuadrant(self, quadrantState, queue):
         self.current_hold = quadrantState.quadrant
-
+        await queue.put({FLICK_HOLD: {quadrantState.quadrant : HELD} , FIGURE: None})
 
 
     # pass in current Analog Stick and Button information from parse functions
     # takes a QuadrantState and a ButtonState object
-    def updateState(self, quadrantState, buttonState):
+    async def updateQuadrantState(self, quadrantState, queue):
     # need to turn quadrantsObsereved and buttonsObseved from each hand into valid movements
 
         #Need to be able to differentiate short and long entries, and only care about changes in quadrant or long holds in non-QC
@@ -320,8 +347,6 @@ class Stik:
 
 
         figureLength = len(self.quadrantsObserved)
-        #TODO: update button state for stik
-        self.buttonsObserved.append(buttonState)
 
         #initial state, nothing observed yet.
         # *should* only ever add QC, as ending and starting occurs at QC
@@ -333,17 +358,16 @@ class Stik:
         previousTimestamp = self.previousQuadrantState().timestamp
 
 
-        print("figure length = {}, previousQuadrant = {}, previousTimestamp = {},  currentQuadrant = {}, currentTimestamp = {} ".format(figureLength, previousQuadrant, previousTimestamp, quadrantState.quadrant, quadrantState.timestamp))
+        # print("figure length = {}, previousQuadrant = {}, previousTimestamp = {},  currentQuadrant = {}, currentTimestamp = {} ".format(figureLength, previousQuadrant, previousTimestamp, quadrantState.quadrant, quadrantState.timestamp))
 
 
         # detect a hold release. All other movements on this Stik are invalid until the hold is released.
         if quadrantState.quadrant == QC and previousQuadrant != None and self.current_hold != None:
-            print("HOLD TO {} RELEASED".format(self.current_hold))
+            await queue.put({FLICK_HOLD: {self.current_hold : RELEASED} , FIGURE: None})
             self.quadrant_hold_thread = None
             self.current_hold = None
             self.resetQuadrantsObserved()
             self.quadrantsObserved.append(quadrantState)
-            #TODO, pass this information along in a reasonable format
             return
 
         # create a timer on possible hold start
@@ -351,7 +375,6 @@ class Stik:
         # cancel timer thread when:
         #   any other state detected
         if self.quadrant_hold_thread != None and previousQuadrant != quadrantState.quadrant:
-            print("kill thread")
             self.quadrant_hold_thread.cancel()
             self.quadrant_hold_thread = None
 
@@ -364,18 +387,15 @@ class Stik:
 
         # hold state, only QC -> QX observed, kick off thread
         if previousQuadrant == QC and quadrantState.quadrant != QC and (figureLength == 1) and quadrantState.quadrant != self.current_hold and self.quadrant_hold_thread == None:
-            self.quadrant_hold_thread = Timer(self.HOLD_TIME_DELTA, self._holdQuadrant, args = [quadrantState])
+            self.quadrant_hold_thread = Timer(self.HOLD_TIME_DELTA, self._holdQuadrant, args = [quadrantState, queue])
             self.quadrantsObserved.append(quadrantState)
-            print("start thread")
-            self.quadrant_hold_thread.start()
             return
 
 
         # flick state, only QC -> QX -> QC observed, and for < FLICK_TIME_DELTA
         delta_s = time.time() - previousTimestamp
         if previousQuadrant != QC and quadrantState.quadrant == QC and ( figureLength == 2 ) and (delta_s < self.FLICK_TIME_DELTA) :
-            print("FLICK TO {} OBSERVED".format(previousQuadrant))
-            #TODO, pass this information along in a reasonable format
+            await queue.put({FLICK_HOLD: {previousQuadrant : PRESSED} , FIGURE: None})
             self.resetQuadrantsObserved()
             self.quadrantsObserved.append(quadrantState)
             return
@@ -394,8 +414,7 @@ class Stik:
         if previousQuadrant != QC and quadrantState.quadrant == QC:
             self.quadrantsObserved.append(quadrantState)
             if self.legalFigure(debug=True):
-                print("FIGURE OBSERVED: {}".format(self.quadrantsObserved))
-                #TODO, pass this information along in a reasonable format
+                await queue.put({FLICK_HOLD: None , FIGURE: self._quadStateListToQuadList(self.quadrantsObserved)})
             else:
                 print("IGNORING ILLEGAL FIGURE OBSERVED: {}".format(self.quadrantsObserved))
 
@@ -413,7 +432,62 @@ class Stik:
             return
 
 
+
         return
+
+    async def _holdButton(self, buttonState, queue):
+        self.button_held = buttonState.button
+        await queue.put({buttons : {THUMB : HELD}})
+        return
+
+
+    async def updateButtonState(self, buttonState, queue):
+
+        if self.buttonObserved == None:
+            self.buttonObserved = ButtonState(self.hand, 0)
+
+        previousButton = self.buttonObserved.button
+        previousTimestamp = self.buttonObserved.timestamp
+
+        # print("currentButton = {}, previousButton = {}".format(buttonState.button, previousButton))
+
+        # flick state, only QC -> QX -> QC observed, and for < FLICK_TIME_DELTA
+        delta_s = time.time() - previousTimestamp
+        if previousButton == 1 and buttonState.button == 0 and (delta_s < self.BUTTON_PRESS_TIME_DELTA) :
+            self.buttonObserved = buttonState
+            self.button_hold_thread.cancel()
+            self.button_hold_thread = None
+            await queue.put({buttons : {THUMB : PRESSED}})
+            return False
+
+        #handle a hold release
+        if previousButton == 1 and self.button_hold_thread != None and buttonState.button == 0 and self.button_held != None:
+            self.buttonObserved = buttonState
+            self.button_hold_thread == None
+            self.button_held == None
+            await queue.put({buttons : {THUMB : RELEASED}})
+            return False
+
+        #otherwise not a hold release, rather kill the hold thread
+        if self.button_hold_thread != None and previousButton != buttonState.button:
+            self.button_hold_thread.cancel()
+            self.button_hold_thread = None
+
+
+        if previousButton == 0 and self.button_hold_thread == None and buttonState.button == 1:
+            self.button_hold_thread = Timer(self.BUTTON_PRESS_TIME_DELTA, self._holdButton, args = [buttonState, queue])
+            self.buttonObserved = buttonState
+            return True
+
+        #TODO: could handle a double press as well?
+        return False
+
+    async def updateState(self, quadrantState, buttonState, queue, debug = True):
+        # if there is a change in button state, ignore all quadrant changes
+        block = await self.updateButtonState(buttonState, queue)
+        if not block:
+            await self.updateQuadrantState(quadrantState, queue)
+
 
 
 # pass in the stik states, and generate keypresses
@@ -430,19 +504,23 @@ class DoubleStik:
         self.left = left_stik
         self.right = right_stik
 
-    def updateState(self, analogState, buttonState):
-        if analogState.hand == "left":
-            self.left.updateState(analogState, buttonState)
-        elif analogState.hand == "right":
-            self.right.updateState(analogState, buttonState)
-
-        #TODO: take the states from both hands and combine them, then create a keypress when in a valid state
-        # not every update state will generate a keypress
+    async def updateState(self, quadrantState, buttonState, queue):
+        if quadrantState.hand == "left":
+            block = await self.left.updateState(quadrantState, buttonState, queue)
+        elif quadrantState.hand == "right":
+            block = await self.right.updateState(quadrantState, buttonState, queue)
         return
 
-    def keepAlive(self):
-        self.left.keepAlive()
-        self.right.keepAlive()
+
+    async def translateState(self):
+        return
+
+    # consume events from the queue, translate their meanings into keypresses
+    async def combineState(self, queue):
+        while(True):
+            event = await queue.get()
+            print(event)
+
 
     def sendKeypress():
         #TODO: pick method to send keypress events to the OS

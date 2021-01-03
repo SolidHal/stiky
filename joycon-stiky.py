@@ -46,6 +46,18 @@ def toQuadrantState(hand, direction):
 def toButtonState(hand, button):
     return ButtonState(hand, button)
 
+async def eventProducer(queue, dev, stik, joycons):
+    async for event in dev.async_read_loop():
+        # determine hand for event
+        joycon_hand = joycons.handleEvent(event, debug = False)
+        if joycon_hand == None:
+            continue
+        # create QuadrantState and ButtonState from event
+        quadState = toQuadrantState(joycon_hand.hand, joycon_hand.getStickQuad() )
+        buttonState = toButtonState(joycon_hand.hand, joycon_hand.getButton() )
+        # send QuadrantState to stiky, which sends keypresses when it is ready
+        await stik.updateState(quadState, buttonState, queue)
+
 def main():
 
     print(list_devices())
@@ -62,19 +74,17 @@ def main():
 
     stik = DoubleStik(leftStik, rightStik)
 
-    for event in dev.read_loop():
-        # determine hand for event
-        joycon_hand = joycons.handleEvent(event, debug = False)
-        if joycon_hand == None:
-            continue
-        # create QuadrantState and ButtonState from event
-        quadState = toQuadrantState(joycon_hand.hand, joycon_hand.getStickQuad() )
-        buttonState = toButtonState(joycon_hand.hand, joycon_hand.getButton() )
-        # send QuadrantState to stiky, which sends keypresses when it is ready
-        stik.updateState(quadState, buttonState)
+    #producer, fill queue with events
+    loop = asyncio.get_event_loop()
+    queue = asyncio.Queue()
+    producer_coro = eventProducer(queue, dev, stik, joycons)
+    consumer_coro = stik.combineState(queue)
+    loop.run_until_complete(asyncio.gather(producer_coro, consumer_coro))
+    loop.close()
+
+    #consumer, consume queue events
 
     return
 
 if __name__ == "__main__":
     main()
-    # asyncio.run(main())

@@ -5,14 +5,9 @@ import time
 import asyncio
 import joycon
 from asyncioTimer import Timer
+import stikymap
+from stikymap import *
 
-hand1map = {
-
-}
-
-hand2map = {
-    
-}
 
     # need to handle 3 types of input
     # 1) rotation around quadrants, aka figures
@@ -110,69 +105,6 @@ class ButtonState:
                  self.timestamp = timestamp
 
 
-QC = 0
-Q1 = 1
-Q2 = 2
-Q3 = 3
-Q4 = 4
-
-OC = 0
-O1 = 0.5
-O2 = 1
-O3 = 1.5
-O4 = 2
-O5 = 2.5
-O6 = 3
-O7 = 3.5
-O8 = 4
-
-Quadrants = [
-    QC,
-    Q1,
-    Q2,
-    Q3,
-    Q4
-]
-
-Octants = [
-    OC,
-    O1,
-    O2,
-    O3,
-    O4,
-    O5,
-    O6,
-    O7,
-    O8
-]
-
-figureQuadrants = [
-    QC,
-    Q1,
-    Q2,
-    Q3,
-    Q4
-]
-
-#BUTTON STATE DICT KEYS
-# QUADRANT INPUT BLOCKING:
-block = "block"
-# BUTTONS:
-buttons = "buttons"
-THUMB = "thumb"
-# BUTTON STATES:
-RELEASED = "released"
-PRESSED = "pressed"
-HELD = "held"
-
-
-#QUADRANT STATE DICT KEYS
-FIGURE = "figure"
-# for continaing holds/flicks
-FLICK_HOLD = "flick_hold"
-# then uses the BUTTON STATES above but, FLICKED == PRESSED
-
-
 
 class Stik:
     # QC = "Center Quadrant"
@@ -201,7 +133,6 @@ class Stik:
     MIN_FIGURE_LENGTH = 4
 
     # store configuration
-    stikHardware = None
     stikMap = None
 
     # track the quadrants and buttons observed
@@ -263,25 +194,25 @@ class Stik:
         if debug:
             print("{} : {}".format(self.hand, string))
 
+
+    # need both incrementing and decrementing checks to avoid 4,1,4 and 1,4,1 issues
+    def isIncrementing(self, quadA, quadB):
+        # handle the special wrap around case
+        if (quadA == Q4 and quadB == Q1):
+            return True
+        elif (quadA - quadB) == -1:
+            return True
+        return False
+
+    def isDecrementing(self, quadA, quadB):
+        # handle the special wrap around case
+        if (quadA == Q1 and quadB == Q4):
+            return True
+        elif (quadA - quadB) == 1:
+            return True
+        return False
+
     def legalFigure(self, debug = False):
-
-        # need both incrementing and decrementing checks to avoid 4,1,4 and 1,4,1 issues
-        def isIncrementing(stateA, stateB):
-            # handle the special wrap around case
-            if (stateA.quadrant == Q4 and stateB.quadrant == Q1):
-                return True
-            elif (stateA.quadrant - stateB.quadrant) == -1:
-                return True
-            return False
-
-        def isDecrementing(stateA, stateB):
-            # handle the special wrap around case
-            if (stateA.quadrant == Q1 and stateB.quadrant == Q4):
-                return True
-            elif (stateA.quadrant - stateB.quadrant) == 1:
-                return True
-            return False
-
 
         incrementing = None
         decrementing = None
@@ -311,8 +242,8 @@ class Stik:
                 return False
 
         # determine incrementing or decrementing by looking at first non-starting transition, aka 1 -> 2
-        incrementing = isIncrementing(quadrantsObserved[1], quadrantsObserved[2])
-        decrementing = isDecrementing(quadrantsObserved[1], quadrantsObserved[2])
+        incrementing = self.isIncrementing(quadrantsObserved[1].quadrant, quadrantsObserved[2].quadrant)
+        decrementing = self.isDecrementing(quadrantsObserved[1].quadrant, quadrantsObserved[2].quadrant)
         if incrementing:
                 self._printif(debug, "FIGURE IS INCREMENTING")
         elif decrementing:
@@ -323,7 +254,7 @@ class Stik:
         # check ordering for 2 -> 3, etc, up to before the last. We checked the last was QC above.
         orderQuadrants = quadrantsObserved[1:-1]
         for i, j in zip(orderQuadrants, orderQuadrants[1:]):
-            if (incrementing and incrementing == isIncrementing(i, j)) or (decrementing and decrementing == isDecrementing(i,j)):
+            if (incrementing and incrementing == self.isIncrementing(i.quadrant, j.quadrant)) or (decrementing and decrementing == self.isDecrementing(i.quadrant, j.quadrant)):
                 continue
             else:
                 self._printif(debug, "ERROR: FIGURE IS INCREMENTING AND DECREMENTING; First offending pair: {} to {} ".format(i.quadrant, j.quadrant))
@@ -333,7 +264,7 @@ class Stik:
 
     async def _holdQuadrant(self, quadrantState, queue):
         self.current_hold = quadrantState.quadrant
-        await queue.put({FLICK_HOLD: {quadrantState.quadrant : HELD} , FIGURE: None})
+        await queue.put({HAND: self.hand, FLICK_HOLD: {quadrantState.quadrant : HELD} , FIGURE: None})
 
 
     # pass in current Analog Stick and Button information from parse functions
@@ -363,7 +294,7 @@ class Stik:
 
         # detect a hold release. All other movements on this Stik are invalid until the hold is released.
         if quadrantState.quadrant == QC and previousQuadrant != None and self.current_hold != None:
-            await queue.put({FLICK_HOLD: {self.current_hold : RELEASED} , FIGURE: None})
+            await queue.put({HAND : self.hand, FLICK_HOLD: {self.current_hold : RELEASED} , FIGURE: None})
             self.quadrant_hold_thread = None
             self.current_hold = None
             self.resetQuadrantsObserved()
@@ -395,7 +326,7 @@ class Stik:
         # flick state, only QC -> QX -> QC observed, and for < FLICK_TIME_DELTA
         delta_s = time.time() - previousTimestamp
         if previousQuadrant != QC and quadrantState.quadrant == QC and ( figureLength == 2 ) and (delta_s < self.FLICK_TIME_DELTA) :
-            await queue.put({FLICK_HOLD: {previousQuadrant : PRESSED} , FIGURE: None})
+            await queue.put({HAND : self.hand, FLICK_HOLD: {previousQuadrant : PRESSED} , FIGURE: None})
             self.resetQuadrantsObserved()
             self.quadrantsObserved.append(quadrantState)
             return
@@ -414,7 +345,7 @@ class Stik:
         if previousQuadrant != QC and quadrantState.quadrant == QC:
             self.quadrantsObserved.append(quadrantState)
             if self.legalFigure(debug=True):
-                await queue.put({FLICK_HOLD: None , FIGURE: self._quadStateListToQuadList(self.quadrantsObserved)})
+                await queue.put({HAND : self.hand, FLICK_HOLD: None , FIGURE: self._quadStateListToQuadList(self.quadrantsObserved)})
             else:
                 print("IGNORING ILLEGAL FIGURE OBSERVED: {}".format(self.quadrantsObserved))
 
@@ -431,13 +362,11 @@ class Stik:
             self.quadrantsObserved.append(quadrantState)
             return
 
-
-
         return
 
     async def _holdButton(self, buttonState, queue):
         self.button_held = buttonState.button
-        await queue.put({buttons : {THUMB : HELD}})
+        await queue.put({HAND : self.hand, buttons : {THUMB : HELD}})
         return
 
 
@@ -457,7 +386,7 @@ class Stik:
             self.buttonObserved = buttonState
             self.button_hold_thread.cancel()
             self.button_hold_thread = None
-            await queue.put({buttons : {THUMB : PRESSED}})
+            await queue.put({HAND : self.hand, buttons : {THUMB : PRESSED}})
             return False
 
         #handle a hold release
@@ -465,7 +394,7 @@ class Stik:
             self.buttonObserved = buttonState
             self.button_hold_thread == None
             self.button_held == None
-            await queue.put({buttons : {THUMB : RELEASED}})
+            await queue.put({HAND : self.hand, buttons : {THUMB : RELEASED}})
             return False
 
         #otherwise not a hold release, rather kill the hold thread
@@ -488,6 +417,53 @@ class Stik:
         if not block:
             await self.updateQuadrantState(quadrantState, queue)
 
+    def _getEventType(self, event):
+        if event.get(buttons, None) != None:
+            return buttons
+        elif event.get(FLICK_HOLD, None) != None:
+            return FLICK_HOLD
+        elif event.get(FIGURE, None) != None:
+            return FIGURE
+        else:
+            return None
+
+    def translateState(self, event, layer_key):
+        # layer changes depending on layer key
+        etype = self._getEventType(event)
+        if etype == buttons or etype == FLICK_HOLD:
+            buttons_flicks_holds = event.get(etype)
+            for button, state in buttons_flicks_holds.items():
+                if state == HELD:
+                    key = self.stikMap.get(HOLDS).get(button)
+                    print("{} HELD".format(key))
+                elif state == RELEASED:
+                    key = self.stikMap.get(HOLDS).get(button)
+                    print("{} RELEASED".format(key))
+                elif state == PRESSED:
+                    key = self.stikMap.get(PRESSES).get(button)
+                    print("{} PRESSED".format(key))
+        elif etype == FIGURE:
+            layer = self.stikMap.get(layer_key)
+            figure = event.get(etype)
+            print(figure)
+            layer_quad_key = figure[1] # skip over the QC
+            print("layer quad key = {}".format(layer_quad_key))
+            index = len(figure) - 1 - 2 - 1 # remove the start quad, start and end QC, and index on 0
+
+            clockwise = self.isIncrementing(figure[1], figure[2])
+            print("clockwise is {}".format(clockwise))
+            if clockwise:
+                layer_quad_direction_key = CLOCK
+            else:
+                layer_quad_direction_key = COUNTERCLOCK
+            layer_quad_direction = layer.get(layer_quad_key).get(layer_quad_direction_key)
+
+            print("layer_quad_direction = {}".format(layer_quad_direction))
+            print("index = {}".format(index))
+
+            key = layer_quad_direction[index]
+            print("{} FIGURE PRESSED".format(key))
+
 
 
 # pass in the stik states, and generate keypresses
@@ -500,6 +476,8 @@ class DoubleStik:
     left_state = None
     right_state = None
 
+    layer_key = None
+
     def __init__(self, left_stik, right_stik):
         self.left = left_stik
         self.right = right_stik
@@ -511,37 +489,22 @@ class DoubleStik:
             block = await self.right.updateState(quadrantState, buttonState, queue)
         return
 
-
-    async def translateState(self):
-        return
-
     # consume events from the queue, translate their meanings into keypresses
-    async def combineState(self, queue):
+    async def translateState(self, queue):
+        if self.layer_key == None:
+            self.layer_key = FIGURE
         while(True):
             event = await queue.get()
             print(event)
+            if event.get(HAND) == "left":
+                self.left.translateState(event, self.layer_key)
+            elif event.get(HAND) == "right":
+                self.right.translateState(event, self.layer_key)
+
 
 
     def sendKeypress():
         #TODO: pick method to send keypress events to the OS
         return
 
-    # poll the stiks and manage state
-def main():
-
-    hand1 = Stik()
-    hand2 = Stik()
-
-    while(true):
-        analogState = hand1.parseAnalogStick()
-        buttonState = hand1.parseButton()
-        hand1.updateState(analogState, buttonState)
-        analogState = parseAnalogStick()
-        buttonState = parseButton()
-        hand2.updateState(analogState, buttonState)
-        keypress = doubleStik(hand1, hand2)
-        sendKeypress(keypress)
-
-
-    return
 

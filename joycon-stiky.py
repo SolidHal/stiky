@@ -6,28 +6,29 @@ import asyncio
 import joycon
 import stiky
 from stiky import Stik, DoubleStik, QuadrantState, ButtonState
+import stikymap
 
 from evdev import list_devices, InputDevice, categorize, ecodes, eventio_async
 
 
 directionToQuad = {
-    joycon.centered : stiky.QC,
-    joycon.up : stiky.Q1,
-    joycon.right : stiky.Q2,
-    joycon.down : stiky.Q3,
-    joycon.left : stiky.Q4
+    joycon.centered : stikymap.QC,
+    joycon.up : stikymap.Q1,
+    joycon.right : stikymap.Q2,
+    joycon.down : stikymap.Q3,
+    joycon.left : stikymap.Q4
 }
 
 directionToOct = {
-    joycon.centered : stiky.OC,
-    joycon.up : stiky.O1,
-    joycon.up_right : stiky.O2,
-    joycon.right : stiky.O3,
-    joycon.down_right : stiky.O4,
-    joycon.down : stiky.O5,
-    joycon.down_left : stiky.O6,
-    joycon.left : stiky.O7,
-    joycon.up_left : stiky.O8
+    joycon.centered : stikymap.OC,
+    joycon.up : stikymap.O1,
+    joycon.up_right : stikymap.O2,
+    joycon.right : stikymap.O3,
+    joycon.down_right : stikymap.O4,
+    joycon.down : stikymap.O5,
+    joycon.down_left : stikymap.O6,
+    joycon.left : stikymap.O7,
+    joycon.up_left : stikymap.O8
 }
 
 
@@ -63,14 +64,18 @@ def main():
     print(list_devices())
     dev = InputDevice( list_devices()[0] )
     print(list_devices()[0])
+    print (dev.name)
+    if dev.name != "Nintendo Switch Combined Joy-Cons":
+        print("ERROR! COMBINED JOYCONS ARE NOT AVAILABLE")
+        return
 
     leftJoycon = joycon.Joycon(joycon.hand_left)
     rightJoycon = joycon.Joycon(joycon.hand_right)
 
     joycons = joycon.Joycons(leftJoycon, rightJoycon)
 
-    leftStik = Stik(joycon.hand_left, {})
-    rightStik = Stik(joycon.hand_right, {})
+    leftStik = Stik(joycon.hand_left, stikymap.hand1map)
+    rightStik = Stik(joycon.hand_right, stikymap.hand2map)
 
     stik = DoubleStik(leftStik, rightStik)
 
@@ -78,7 +83,7 @@ def main():
     loop = asyncio.get_event_loop()
     queue = asyncio.Queue()
     producer_coro = eventProducer(queue, dev, stik, joycons)
-    consumer_coro = stik.combineState(queue)
+    consumer_coro = stik.translateState(queue)
     loop.run_until_complete(asyncio.gather(producer_coro, consumer_coro))
     loop.close()
 
